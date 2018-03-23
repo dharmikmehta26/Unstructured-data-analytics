@@ -1,0 +1,94 @@
+---
+title: "facebook analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+install.packages("Rfacebook")
+
+library(Rfacebook)
+
+```
+
+```{r}
+app_id <- "357376038076682"
+
+app_secret <- "d886a397672f7d9b9246f3a580846c65"
+
+token <- "EAACEdEose0cBAFwr367b8B2rzFL59BKFcrbMFBmyv2m12iLWVcFv9AUDeRseCdJmGmULwwJmzda7WrB6kirAsO8cT2IcMD233T7wTaxdZCEwHFECzfFsrXiLFIDPIKZCH9Wx8ZAiqOXBeIiYZBrrNb1vvO1gifZAp98TbfxPmgcLOO2wE49rGySzFENVHZCg0CFTjHHcjFRQZDZD"
+
+fb_oauth <- fbOAuth(app_id,app_secret,extended_permissions = TRUE)
+```
+
+```{r}
+getUsers("me",token = fb_oauth)
+getUsers("me",token,private_info = TRUE)
+updateStatus("Hell yeah....Updating Status using facebook API and R!...CHEERSSS!!!!",token = fb_oauth)
+```
+
+```{r}
+# pages i have liked
+my_likes <- getLikes(user = "me",token = fb_oauth)
+View(my_likes)
+
+# get details about a specific pages
+getpagedata <- getPage(177526890164,token = fb_oauth,n = 50) # id of that page you want to view
+View(getpagedata)
+
+# post details of narendra modi
+getpostdata <- getPost("177526890164_10160144556540165",fb_oauth,n=100,comments = TRUE,,likes = FALSE)
+
+getpostdata$comments$sentiments <- calculate_sentiment(getpostdata$comments$message)
+
+View(table(getpostdata$comments$sentiments))
+
+
+sentiments <- c()
+for(comment in getpostdata$comments$sentiments)
+{
+  sentiments = c(sentiments,calculate_score(comment))
+}
+length(sentiments)
+length(getpostdata$comments$message)
+table(sentiments)
+
+df_comments <- getpostdata$comments
+df_comments$senti_score <- sentiments
+
+
+View(getpostdata)
+View(getpostdata$comments) # view details about the people who commented on posts
+View(getpostdata$post)
+
+
+```
+
+```{r}
+# getting details of narendra modi strings
+narendra_modi <- searchPages(string = 'narendra modi',token = fb_oauth,n=1000)
+View(pages)
+
+write.csv(narendra_modi,"D:/term 3/unstructured data analysis/modi.csv")
+my_page_likes <- getPage(294584907552946,token = fb_oauth)
+
+View(my_page_likes)
+```
+
+
+
+#sentiment analysis
+
+1st approach:- set of words used to get the sentiments
+```{r}
+#install.packages("RSentiment")
+library(RSentiment)
+calculate_sentiment("i love india")
+
+calculate_sentiment("i hate text analytics course,mentor is  not good")
+
+#calculate_sentiment("love is good, sex is rough")
+
+calculate_score(c('i love india,it is best country','i hate text analytics.mentor is very very very poor','modi is good pm,but spends too much for travel.i do not like that,but overall he is good'))
+```
+
+
