@@ -1,0 +1,138 @@
+---
+title: "Unstructure Data Analysis"
+resource_files:
+- hotstar.allreviews_Sentiments.csv
+runtime: shiny
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    theme: cerulean
+---
+
+```{r}
+
+
+#THEMES "cerulean", "journal", "flatly", "readable", "spacelab", #"united", "cosmo", "lumen", "paper", "sandstone", "simplex", "yeti"
+```
+
+
+```{r setup, include=FALSE}
+
+library(flexdashboard)
+library(shiny)
+library(shinydashboard)
+library(dplyr)
+library(ggplot2)
+library(tm)
+library(wordcloud)
+library(RWeka)
+library(rJava)
+library(RColorBrewer)
+library(stringr)
+library(dashboardthemes)
+```
+
+```{r}
+hotstar=read.csv("D:/term 3/unstructured data analysis/assignments/hotstar.allreviews_Sentiments.csv")
+
+##Cleaning the Data
+docs=VCorpus(VectorSource(na.omit(hotstar$Reviews)))
+
+##Transformations
+#Converting to lower case
+doc_clean=tm_map(docs,content_transformer(tolower))
+
+#Removing special symbols
+apply_regex=function(x){
+  gsub('[^a-z ]','',x)
+}
+doc_clean=tm_map(doc_clean,content_transformer(apply_regex))
+
+#Remove Stop Words
+doc_clean=tm_map(doc_clean,removeWords,stopwords())
+
+#Customs stop words
+custom_stopwrds=c('hotstartweets','hotstar','hh','no',"aaaaaand","aaaaah","aab","aabee","aacikelqcgv","amp")
+doc_clean=tm_map(doc_clean,removeWords,custom_stopwrds)
+
+##Document Term Matrix
+dtm=DocumentTermMatrix(doc_clean)
+dtm_df=as.data.frame(as.matrix(dtm))
+
+##Unigram:Bag of Words
+bow=as.data.frame(sort(colSums(dtm_df),decreasing=T))
+bow$words=rownames(bow)
+names(bow)=c("Freq","Words")
+rownames(bow)=NULL
+
+
+##Bigram
+BigramTokeniser=function(x)
+{
+  NGramTokenizer(x,Weka_control(min=2,max=2))
+}
+dtm_bigram=DocumentTermMatrix(doc_clean,control=list(tokenize=BigramTokeniser))
+df_dtm_bigram=as.data.frame(as.matrix(dtm_bigram))
+
+##Bigram: Bag Of Words(bow)
+bow_bigram = as.data.frame(sort(colSums(df_dtm_bigram), decreasing = T))
+bow_bigram$words = rownames(bow_bigram)
+names(bow_bigram) = c('Freq','Words')
+rownames(bow_bigram)=NULL
+
+
+```
+
+
+
+
+Sidebar {.sidebar}
+=======================================================================
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+
+
+sliderInput(inputId = "slider_words",label="Select no: of words",min=1,max=100,value=50)
+
+colours=c("Accent", "Dark2", "Paired", "Pastel1", "Pastel2", "Set1", "Set2", "Set3")
+selectInput(inputId = "select_colour",label="Select a Colour",choices=colours)
+
+
+
+
+##Inserting Text Box to remove wrds from Word Cloud Manually
+textInput(inputId = "words", label = "Enter words to be filtered with comma separation", value="", width=NULL, placeholder=NULL)
+```
+
+Unigram Wordcloud
+========================================================================
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+renderPlot({cleanup=unlist(str_split(input$words,pattern=","))
+if(length(cleanup)==0)
+{
+  bow_n=bow
+}else{
+  bow_n=bow%>%filter(!Words%in%cleanup)
+}
+wordcloud(bow_n$Words[1:input$slider_words],bow_n$Freq[1:input$slider_words],colors=brewer.pal(5,input$select_colour),random.order = FALSE)
+})
+```
+
+Bigram Wordcloud
+========================================================================
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, paged.print=FALSE}
+renderPlot({cleanup=unlist(str_split(input$words,pattern=","))
+if(length(cleanup)==0)
+{
+  bow_n=bow_bigram
+}else{
+  bow_n=bow_bigram%>%filter(!Words%in%cleanup)
+}
+  
+  wordcloud(bow_n$Words[1:input$slider_words],bow_n$Freq[1:input$slider_words],colors=brewer.pal(5,input$select_colour),random.order = FALSE)
+})
+```
+
