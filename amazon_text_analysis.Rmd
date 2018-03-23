@@ -1,0 +1,392 @@
+---
+title: "amazon text analysis"
+output: html_document
+---
+
+
+
+```{r setup, include=FALSE}
+library(tm)
+library(dplyr)
+library(ggplot2)
+library(RWeka)
+
+reviews <- read.csv("D:/term 3/unstructured data analysis/text-analytics-master/amazon_reviews_11.csv")
+
+dim(reviews)
+```
+
+#two type of corpus
+1, volatile corpus - stored in ram and is lost as rstudio shuts down
+2, permanent corpus - it stored in hardisk
+
+
+
+# two approach for text analysis
+1 classical approach ->identify word similarity 
+2 modern approach -> word2vect
+
+# 3 type of source
+* vector source
+* directory source
+* dataframe source
+
+```{r}
+docs <- VCorpus(VectorSource(na.omit(reviews$reviewText)))
+docs
+
+cosine(docs[10],docs[100])
+inspect(docs[[1]])
+```
+
+
+#Transformations
+## transformations of texts
+* Lowercase
+* remove stop words
+* apply regular expression
+* stemming
+* lemmatization
+* other transformation
+
+
+```{r}
+#convert to lower case
+corpus_clean <- tm_map(docs, content_transformer(tolower)) 
+
+#applying regular expressions
+apply_regex <- function(x) gsub('[^a-z ]', '',x) # gsub('http[a-z]{2}')
+
+corpus_clean <- tm_map(corpus_clean, content_transformer(apply_regex))
+
+#remove stopwords
+common_stopwords <- c('amazon','got','can','use','just','will','work','one','time','still','need','good','great','like','want','get','dont','thing')
+
+ 
+
+#remove stopwords
+corpus_clean <- tm_map(corpus_clean, removeWords, stopwords()) 
+
+
+inspect(corpus_clean[[1]])
+
+
+###stemming - to remove root words with similar letters synonyms
+
+corpus_clean <-  tm_map(corpus_clean,stemDocument) 
+
+corpus_clean <- tm_map(corpus_clean, removeWords, common_stopwords)
+#inspect(corpus_clean[[2]])
+
+```
+
+
+##Document Term Matrix
+
+```{r}
+
+
+dtm <-  DocumentTermMatrix(corpus_clean)
+
+dtm
+
+df_dtm <- as.data.frame(as.matrix(dtm))
+#View(df_dtm[1:50,1:10])
+
+library(dplyr)
+
+
+#COUNT NO. OF NON ZERO AND ZERO ELEMENTS ( HOMEWORK)
+#a <- c()
+#for(i in 1:ncol(df_dtm))
+#{
+#a <- append(a,df_dtm %>% filter(df_dtm[,i] == 0) %>% summarise(n=n()))
+#}
+  
+  
+```
+
+#BAG OF WORDS
+
+```{r}
+bow =as.data.frame(sort(colSums(df_dtm),decreasing = TRUE))
+names(bow_top <- head(bow,50))
+
+#wordcloud 
+
+library(wordcloud)
+wordcloud(rownames(bow_top),bow_top$freq,colors =c("violet","green","blue"))
+```
+
+#to find which document(row) is biggest counting number of word in documents
+```{r}
+docs_length <- as.data.frame(sort(rowSums(df_dtm),decreasing = TRUE))
+names(docs_length) <- c("freq")
+docs_length$docid = rownames(docs_length)
+View(docs_length)
+
+# analysis of document with maximum number of words in review using boxplot
+boxplot(docs_length$freq)
+
+# row number 388 has given longest review which is worth looking at..
+inspect(docs[[388]])
+```
+
+
+
+```{r}
+#look for good and bad words frequency
+colSums(df_dtm %>% select(worst,poor,bad,ass,waste,disappoint,disapppointed,crap,freaks,freaked,freaking,good,excellent,awesome,superb,fantastic,kudos))
+
+```
+
+# Bigrams
+```{r}
+
+bigramtokenizer <- function(x) NGramTokenizer(x,Weka_control(min = 2,max = 2))
+
+dtmbigram <- DocumentTermMatrix(corpus_clean,control = list(tokenize = bigramtokenizer))
+
+df_dtmbigram <-  as.data.frame(as.matrix(dtmbigram))
+
+View(df_dtmbigram[,1:50])
+
+dim(df_dtmbigram)
+```
+
+
+
+```{r}
+bow_bigrams <- as.data.frame(sort(colSums(df_dtmbigram),decreasing = TRUE))
+
+names(bow_bigrams) <- c("freq")
+bow_bigrams$name <- rownames(bow_bigrams)
+
+bow_bigram_top <- head(bow_bigrams,50)
+
+wordcloud(bow_bigram_top$name,bow_bigram_top$freq)
+```
+
+#searching for list of good and bad words with their pair of words
+```{r}
+colname_dtmbigram1 <- colnames(df_dtmbigram)
+badwords <- c("worst","bad","poor","waste","manipulate","sad")
+
+
+
+## badwords bigrams
+bad_bigram_interested <- c()
+
+for(colname_dtmbigram1 in colname_dtmbigram1)
+{
+  words_bigram = unlist(strsplit(colname_dtmbigram1, ' '))
+  if(length(intersect(badwords,words_bigram))>0)
+  bad_bigram_interested = c(bad_bigram_interested,colname_dtmbigram1)
+}
+
+bad_bigram_interested
+
+## goodwords bigrams
+goodwords <- c("good","excellent","awesome","nice","descent")
+good_bigram_interested <- c()
+
+for(colname_dtmbigram1 in colname_dtmbigram1)
+{
+  words_bigram = unlist(strsplit(colname_dtmbigram1, ' '))
+  if(length(intersect(goodwords,words_bigram))>0)
+  good_bigram_interested = c(good_bigram_interested,colname_dtmbigram1)
+}
+
+
+# to look for words which has high frequency
+View(as.data.frame(sort(colSums(df_dtmbigram[,bad_bigram_interested]),decreasing = T)))
+
+```
+
+#topic modeling using cosin value
+* if value is close to 0 it is not similar
+* if value is close to 1 it is highly similar
+```{r}
+#install.packages(lsa)
+library(lsa)
+
+cosine(df_dtm[10],df_dtm[100])
+
+length(df_dtm)
+
+words_similar <- function(input_word)
+{
+  words_list = c()
+  words_cosine = c()
+  
+  for(curr_word in colnames(df_dtm))
+  {
+  curr_cosine = cosine(df_dtm[,input_word],df_dtm[,curr_word])
+  words_list = c(words_list,curr_word)
+  words_cosine = c(words_cosine,curr_cosine)
+  }
+  df_words = data.frame(words = words_list,cosine = words_cosine)
+  result = df_words %>% arrange(-cosine) %>% head(5)
+  return(result$words)
+}
+words_similar('camera')
+```
+
+# convert original corpus_clean to term document matrix
+```{r}
+
+tdm <- TermDocumentMatrix(corpus_clean)
+df_tdm <- as.data.frame(as.matrix(tdm))
+#View(df_tdm[,1:10])
+
+document_similar= function(doc_number)
+{
+  docs_num = c()
+  docs_cos = c()
+  for(doc in colnames(df_tdm))
+  {
+      if(doc !=doc_number){
+        curr_cos = cosine(df_tdm[,doc_number],df_tdm[,doc])
+        docs_num= c(docs_num,doc)
+        docs_cos = c(docs_cos,curr_cos)
+      }
+    }
+  result = data.frame(doc_num = docs_num,cosine = docs_cos)
+  result = result %>% arrange(-cosine) %>% head(5)
+  return(result$doc_num)
+
+}
+
+document_similar(10)
+```
+
+
+# Document clustering
+```{r}
+
+set.seed(40)
+
+# create cluster for subset of datasets which include top 20 words
+doc_cluster <- data.frame(df_dtm,doc_Cluster$cluster)
+
+top_20_word = as.data.frame(sort(colSums(df_dtm),decreasing = T))
+top_20 = rownames(head(top_20_word,20))
+
+df_dtm_top <- df_dtm[,top_20]
+
+model <- kmeans(df_dtm_top,5)
+
+barplot(table(model$cluster))
+```
+
+# word clustering
+```{r}
+
+model = kmeans(df_tdm,5)
+result = data.frame(words = rownames(df_tdm),cluster = model$cluster,freq= rowSums(df_tdm))
+View(result %>% filter(cluster==5))
+barplot(table(model$cluster))
+
+write.csv(result,'words_cluster.csv',row.names = F)
+
+
+```
+```{r}
+
+pcs <- prcomp(df_tdm,center = TRUE)
+plot(pcs,type = "l")
+
+top_pcs = pcs$x[,1:15]
+model = kmeans(top_pcs,4)
+
+
+```
+
+
+##TF-IDF
+
+
+```{r}
+
+bow <- sort(colSums(df_dtm),decreasing = T)[1:15]
+
+```
+
+# after getting dtm matrix its is good to transfer it to tfidf so that weightage of highest frequency will come down  and lowest frequency word weightage will come up so we can get some important words for further process
+
+weightTfIdf functions internal working :- 
+(by doing this we are improving weightage of other words)
+TF-IDF -> 
+(1) term frequency 
+
+(2) inverse document frequency = log(total no. of docs/number of document in which term appears)
+
+(TF * IDF)/LENGTH OF DOCUMENT 
+
+```{r}
+dtm_tfidf = weightTfIdf(dtm[rowSums(df_dtm)>0,])
+df_dtm_tfidf = as.data.frame(as.matrix(dtm_tfidf))
+bow_tfidf = sort(colSums(df_dtm_tfidf),decreasing = T)[1:15]
+bow_tfidf
+
+```
+
+
+
+*******************************Topic modelling*************************************
+#unsupervised method
+# Lda is technique used for topic modelling concept (latent dirichlet allocation)
+# under lda the way topic is allocated that depends upon the ditribution
+# under lda :- gip sampling is the one method of assigning topics to words
+
+```{r}
+#install.packages('lsa')
+#install.packages('LSAfun')
+#install.packages('tidytext')
+#install.packages('topicmodels')
+
+library(topicmodels)
+library(tidytext)
+
+```
+
+# sparsity = total no. of zero/total no. of elements
+```{r}
+dim(df_dtm)
+
+
+# words will be remove those appearing very rarely
+dtm_nonsparse <- removeSparseTerms(dtm,sparse = 0.95)
+dtm_nonsparse <- dtm_nonsparse[rowSums(as.matrix(dtm_nonsparse))>0,]
+dim(as.matrix(dtm_nonsparse))
+
+lda.out <- LDA(dtm_nonsparse,4,method = 'Gibbs')
+
+word2topic <- tidy(lda.out,matrix = 'beta')
+doc2topic <- tidy(lda.out,matrix = 'gamma')
+
+
+word2topic %>% filter(topic == 1) %>% arrange(-beta)
+
+
+topic_top5_words <- word2topic %>% group_by(topic) %>% top_n(5) %>% arrange(topic,-beta)
+
+
+ggplot(topic_top5_words,aes(reorder(term,beta),beta))+geom_bar(stat = 'identity')+facet_wrap(~topic,scale = 'free') + coord_flip()
+#scale = 'free' every graph will have their value on axis (if not used it has common value for all the graph)
+
+
+```
+
+
+```{r}
+#View(doc2topic)
+
+doc2topic_top <- doc2topic %>% group_by(document) %>% arrange(document,-gamma) %>% top_n(1)
+
+barplot(table(doc2topic_top$topic))
+
+```
+
+
+
