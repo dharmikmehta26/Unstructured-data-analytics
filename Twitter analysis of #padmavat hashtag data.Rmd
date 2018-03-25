@@ -1,0 +1,203 @@
+---
+title: "Sentiment Analysis of Twitter review data"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(twitteR)
+library(tm)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(wordcloud)
+library(RWeka)
+library(RSentiment)
+library(lubridate)
+library(plotly)
+```
+
+
+```{r}
+# api_key = "RFK87V4dUVNSEXh1jJ2K0Pn1y"
+# 
+# api_secret = "00omdhKoXEXAVsnZ9oJidpMmfuxSOPE9i5pvNuJ4uBm8qM4kcD"
+# token = "2155427533-aKPuGjxMRRz9Bvbgo9IW4mCzstqiKowfIlnmAel"
+# token_secret = "KLL12IOfcxVVlAVqrvKrcb8rRFvHfyViL6MCpJ5ZHmX8P"
+
+  
+  
+# auth=setup_twitter_oauth(api_key,api_secret,token,token_secret)
+# tweet=searchTwitter("#padmaavat",n=500,retryOnRateLimit = 120)
+# length(tweet)
+
+```
+
+```{r}
+# df_table <- twListToDF(tweet)
+# View(df_table)
+# setwd("D:/term 3/unstructured data analysis/assignments/assignmnet 2")
+# write.csv(df_table,"padmavaat.csv",row.names = F)
+
+padmavaat_data <- read.csv("padmavaat.csv")
+
+#View(tail(padmavaat_data,50))
+
+
+corpus <- VCorpus(VectorSource(padmavaat_data$text))
+# inspect(corpus[[2]])
+# inspect(corpus_clean[[2]])
+```
+
+```{r}
+corpus_clean <- tm_map(corpus,content_transformer(tolower))
+
+
+apply_regex <- function(x) gsub('[^a-z#@ ]', '',x) # gsub('http[a-z]{2}')
+corpus_clean <- tm_map(corpus_clean, content_transformer(apply_regex))
+
+custom_stop_words=c("will","rt","#","gross","raid")
+
+corpus_clean <- tm_map(corpus_clean,removeWords,stopwords())
+corpus_clean <- tm_map(corpus_clean,removeWords,custom_stop_words)
+
+#inspect(corpus_clean[[1]])
+```
+
+
+
+```{r}
+#attributes(corpus_clean)
+dataframe <- data.frame(text=unlist(sapply(corpus_clean, `[`, "content")),stringsAsFactors=F)
+#senti_data <-calculate_sentiment(dataframe$text)
+#write.csv(senti_data,'senti_data.csv',row.names = F)
+
+senti_data <- read.csv('senti_data.csv')
+senti_data$time <- padmavaat_data$created
+
+senti_data <- senti_data %>% mutate(sentiment_bin = case_when(sentiment %in% c('Positive','Very Positive')~"Positive",sentiment %in% c('Negative','Very Negative')~"Negative",sentiment == 'Neutral'~"Neutral"))
+#library(lubridate)
+dates <- as.POSIXct(senti_data$time)
+senti_data$date <- day(dates)
+senti_data$hour <- hour(dates)
+
+```
+
+row
+-----------------------------------------------------------------------
+
+### Twitter Reviewsdata
+
+```{r}
+valueBox("#padmavat",icon ="fa-hashtag")
+```
+
+### Reviews of Date
+```{r}
+valueBox("24-25 March",icon = "fa-calendar",color = "green")
+```
+
+### Sentiment Analysis
+```{r}
+valueBox("Analysis",icon = "fa-bar-chart",color = "orange")
+```
+
+
+row 
+-----------------------------------------------------------------------
+
+
+### Sentiments of tweets for each day
+
+```{r}
+
+#library(plotly)
+a <- senti_data %>% group_by(date,sentiment_bin) %>% summarise(count=n()) %>% 
+ggplot(aes(factor(date),count,fill = sentiment_bin)) + geom_bar(stat = 'identity')+ggtitle("Sentiments of tweets for each day") + xlab("DAY") + ylab("Count")+theme(panel.background = element_rect(fill = 'lightgoldenrodyellow', colour = 'green'),plot.background = element_rect(fill="snow")) + theme(plot.background = element_blank(),panel.grid.minor = element_blank(),panel.border = element_blank())+theme(axis.line = element_line(color = 'black'))
+
+ggplotly(a)
+
+```
+
+
+### Sentiments of tweets for each Hour
+
+```{r}
+
+b <- senti_data %>% group_by(date,hour,sentiment_bin) %>% summarise(count=n()) %>% ggplot(aes(factor(hour),count,fill = sentiment_bin)) + geom_bar(stat = 'identity')+ facet_wrap(~date) +ggtitle("Sentiments of tweets for each Hour") + xlab("Hours of Day") + ylab("Count")+theme(panel.background = element_rect(fill = 'lightgoldenrodyellow', colour = 'green'),plot.background = element_rect(fill="snow")) + theme(plot.background = element_blank(),panel.grid.minor = element_blank(),panel.border = element_blank())+theme(axis.line = element_line(color = 'black'))
+
+ggplotly(b)
+```
+
+
+row
+--------------------------------------------------------------
+### wordcloud of top 50 words from positive sentiments records
+
+```{r}
+positive_senti_data <- senti_data %>% filter(sentiment %in% c('Positive','Very Positive'))
+
+dtm <- DocumentTermMatrix(corpus_clean)
+
+df_dtm <- as.data.frame(as.matrix(dtm))
+#View(df_dtm)
+
+df_dtm$sentiment <- senti_data$sentiment
+
+df_dtm_positive <-df_dtm %>% filter(sentiment %in% c('Positive','Very Positive'))
+df_dtm_negative <-df_dtm %>% filter(sentiment %in% c('Negative','Very Negative'))
+
+pal2 <- brewer.pal(8,"Dark2")
+
+bow_positive= sort(colSums(df_dtm_positive[,-c(829)]),decreasing = T)
+bow_positive=as.data.frame(bow_positive)
+bow_positive$word=row.names(bow_positive)
+colnames(bow_positive)=c("freq","word")
+wordcloud(bow_positive$word[1:50],bow_positive$freq[1:50],colors = pal2)
+
+
+```
+
+
+### wordcloud of top 50 words from negative sentiments records
+```{r}
+
+bow_negative= sort(colSums(df_dtm_negative[,-829]),decreasing = T)
+bow_negative=as.data.frame(bow_negative)
+bow_negative$word=row.names(bow_negative)
+colnames(bow_negative)=c("freq","word")
+wordcloud(bow_negative$word[1:50],bow_negative$freq[1:50],colors = pal2)
+```
+
+row
+-------------------------------------------------
+
+### Barplot of negative words
+
+```{r}
+words <- sort(colSums(df_dtm[,-829]),decreasing = T)
+#dim(df_dtm)
+
+words=as.data.frame(words)
+words$words_name <- rownames(words)
+colnames(words)=c("freq","words")
+words$words=gsub("#","NA",words$words)
+words$words=gsub(" ","NA",words$words)
+#words$score=calculate_score(words$words)
+
+
+#write.csv(words,'senti_score.csv',row.names = F)
+
+words <- read.csv('senti_score.csv')
+
+words=words[-1,]
+words=words %>% mutate(sentiment=if_else(score<0,"negative"," "))
+words=words %>% filter(sentiment=="negative")
+d <- words %>% head(10) %>% ggplot(aes(x=reorder(words,-freq),y=freq,fill=-freq))+geom_bar(stat = "identity")
+ggplotly(d)
+
+```
+
